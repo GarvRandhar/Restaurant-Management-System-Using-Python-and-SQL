@@ -1,15 +1,13 @@
-# restaurant_manager.py
 import mysql.connector
 import os
 import logging
 import configparser
 from datetime import date, datetime
-from tabulate import tabulate  # For better table displays
-import bcrypt  # For password hashing
-import re  # For input validation
+from tabulate import tabulate 
+import bcrypt  
+import re  
 from decimal import Decimal, ROUND_HALF_UP
 
-# Set up logging
 logging.basicConfig(
     filename='restaurant.log',
     level=logging.INFO,
@@ -20,10 +18,8 @@ class DatabaseManager:
     def __init__(self, config_file='config.ini'):
         """Initialize database connection using configuration file"""
         try:
-            # Load configuration
             self.config = configparser.ConfigParser()
             
-            # Check if config file exists, create with defaults if not
             if not os.path.exists(config_file):
                 self.config['DATABASE'] = {
                     'host': 'localhost',
@@ -166,7 +162,6 @@ class DatabaseManager:
                 )
             ''')
             
-            # Create inventory_items table
             self.cursor.execute('''
                 CREATE TABLE IF NOT EXISTS inventory_items (
                     inventory_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -178,7 +173,6 @@ class DatabaseManager:
                 )
             ''')
             
-            # Create daily_summary table
             self.cursor.execute('''
                 CREATE TABLE IF NOT EXISTS daily_summary (
                     summary_date DATE PRIMARY KEY,
@@ -188,7 +182,6 @@ class DatabaseManager:
                 )
             ''')
             
-            # Insert default menu categories if they don't exist
             self.cursor.execute('SELECT COUNT(*) as count FROM menu_categories')
             if self.cursor.fetchone()['count'] == 0:
                 categories = [
@@ -201,14 +194,11 @@ class DatabaseManager:
                     categories
                 )
             
-            # Insert default menu items if they don't exist
             self.cursor.execute('SELECT COUNT(*) as count FROM menu_items')
             if self.cursor.fetchone()['count'] == 0:
-                # Get category IDs
                 self.cursor.execute('SELECT category_id, name FROM menu_categories')
                 categories = {row['name']: row['category_id'] for row in self.cursor.fetchall()}
                 
-                # Define menu items with their categories
                 breakfast_items = [
                     (categories['Breakfast'], 'Coffee', 350, 'Freshly brewed hot coffee'),
                     (categories['Breakfast'], 'Chai', 200, 'Traditional Indian tea with spices'),
@@ -252,21 +242,18 @@ class DatabaseManager:
                     all_items
                 )
             
-            # Insert default tables if they don't exist
             self.cursor.execute('SELECT COUNT(*) as count FROM tables')
             if self.cursor.fetchone()['count'] == 0:
-                tables = [(i, 4) for i in range(1, 11)]  # Tables 1-10 with capacity 4
-                tables.extend([(i, 6) for i in range(11, 16)])  # Tables 11-15 with capacity 6
-                tables.append((16, 10))  # One large table
+                tables = [(i, 4) for i in range(1, 11)] 
+                tables.extend([(i, 6) for i in range(11, 16)])  
+                tables.append((16, 10))
                 self.cursor.executemany(
                     'INSERT INTO tables (table_number, capacity) VALUES (%s, %s)',
                     tables
                 )
             
-            # Insert default admin user if it doesn't exist
             self.cursor.execute('SELECT COUNT(*) as count FROM users')
             if self.cursor.fetchone()['count'] == 0:
-                # Create default admin user (username: admin, password: admin123)
                 password = "admin123"
                 hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
                 self.cursor.execute(
@@ -343,17 +330,14 @@ class AuthManager:
             logging.warning(f"Non-admin user {self.current_user['username']} attempted to create a new user")
             return False, "Only administrators can create new users"
         
-        # Check if username already exists
         check_query = "SELECT COUNT(*) as count FROM users WHERE username = %s"
         result = self.db.execute_query(check_query, (username,), 'one')
         
         if result and result['count'] > 0:
             return False, "Username already exists"
         
-        # Hash the password
         hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
         
-        # Insert the user
         insert_query = "INSERT INTO users (username, password_hash, role) VALUES (%s, %s, %s)"
         user_id = self.db.execute_query(insert_query, (username, hashed_password, role))
         
@@ -368,7 +352,6 @@ class AuthManager:
         if not self.current_user:
             return False, "No user is logged in"
         
-        # Verify old password
         query = "SELECT password_hash FROM users WHERE user_id = %s"
         user = self.db.execute_query(query, (self.current_user['user_id'],), 'one')
         
@@ -376,7 +359,6 @@ class AuthManager:
             logging.warning(f"Failed password change attempt for user {self.current_user['username']}")
             return False, "Current password is incorrect"
         
-        # Update password
         hashed_password = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
         update_query = "UPDATE users SET password_hash = %s WHERE user_id = %s"
         self.db.execute_query(update_query, (hashed_password, self.current_user['user_id']))
@@ -407,7 +389,6 @@ class CustomerManager:
     
     def add_customer(self, name, mobile, email=None):
         """Add a new customer to the database"""
-        # Validate input
         if not name or not mobile:
             return False, "Name and mobile number are required"
         
@@ -417,14 +398,12 @@ class CustomerManager:
         if email and not re.match(r'^\S+@\S+\.\S+$', email):
             return False, "Invalid email format"
         
-        # Check if customer already exists
         check_query = "SELECT customer_id FROM customers WHERE mobile = %s"
         existing = self.db.execute_query(check_query, (mobile,), 'one')
         
         if existing:
             return False, f"Customer with mobile {mobile} already exists (ID: {existing['customer_id']})"
         
-        # Insert new customer
         insert_query = """
             INSERT INTO customers (name, mobile, email)
             VALUES (%s, %s, %s)
@@ -461,24 +440,20 @@ class CustomerManager:
     
     def update_customer(self, customer_id, name=None, mobile=None, email=None):
         """Update customer information"""
-        # Get current customer data
         customer = self.get_customer(customer_id)
         if not customer:
             return False, "Customer not found"
         
-        # Use existing values if not provided
         name = name if name else customer['name']
         mobile = mobile if mobile else customer['mobile']
         email = email if email is not None else customer['email']
         
-        # Validate input
         if not re.match(r'^\d{10}$', mobile):
             return False, "Mobile number must be 10 digits"
         
         if email and not re.match(r'^\S+@\S+\.\S+$', email):
             return False, "Invalid email format"
         
-        # Update customer
         update_query = """
             UPDATE customers
             SET name = %s, mobile = %s, email = %s
@@ -509,7 +484,6 @@ class CustomerManager:
         if points <= 0:
             return False, "Points must be positive"
         
-        # Check if customer has enough points
         customer = self.get_customer(customer_id)
         if not customer:
             return False, "Customer not found"
@@ -517,7 +491,6 @@ class CustomerManager:
         if customer['loyalty_points'] < points:
             return False, f"Customer only has {customer['loyalty_points']} points available"
         
-        # Deduct points
         query = """
             UPDATE customers
             SET loyalty_points = loyalty_points - %s
@@ -562,7 +535,6 @@ class MenuManager:
     
     def add_menu_item(self, name, price, category_id, description="", is_available=True):
         """Add a new menu item"""
-        # Validate input
         if not name or not price or not category_id:
             return False, "Name, price, and category are required"
         
@@ -573,13 +545,11 @@ class MenuManager:
         except ValueError:
             return False, "Price must be a number"
         
-        # Check if the category exists
         check_query = "SELECT COUNT(*) as count FROM menu_categories WHERE category_id = %s"
         result = self.db.execute_query(check_query, (category_id,), 'one')
         if not result or result['count'] == 0:
             return False, "Category does not exist"
         
-        # Insert menu item
         insert_query = """
             INSERT INTO menu_items (name, price, category_id, description, is_available)
             VALUES (%s, %s, %s, %s, %s)
@@ -597,19 +567,16 @@ class MenuManager:
     
     def update_menu_item(self, item_id, name=None, price=None, description=None, is_available=None):
         """Update a menu item"""
-        # Get current item data
         query = "SELECT * FROM menu_items WHERE item_id = %s"
         item = self.db.execute_query(query, (item_id,), 'one')
         if not item:
             return False, "Menu item not found"
         
-        # Use existing values if not provided
         name = name if name is not None else item['name']
         price = price if price is not None else item['price']
         description = description if description is not None else item['description']
         is_available = is_available if is_available is not None else item['is_available']
         
-        # Validate price
         try:
             price = float(price)
             if price <= 0:
@@ -617,7 +584,6 @@ class MenuManager:
         except ValueError:
             return False, "Price must be a number"
         
-        # Update menu item
         update_query = """
             UPDATE menu_items
             SET name = %s, price = %s, description = %s, is_available = %s
@@ -650,11 +616,9 @@ class OrderManager:
     
     def create_order(self, customer_id, table_id, server_id):
         """Create a new order"""
-        # Validate inputs
         if not customer_id or not table_id or not server_id:
             return False, "Customer, table, and server are required"
         
-        # Create order
         insert_query = """
             INSERT INTO orders (customer_id, table_id, server_id, status)
             VALUES (%s, %s, %s, 'pending')
@@ -662,7 +626,6 @@ class OrderManager:
         order_id = self.db.execute_query(insert_query, (customer_id, table_id, server_id))
         
         if order_id:
-            # Mark table as occupied
             self.db.execute_query(
                 "UPDATE tables SET is_occupied = TRUE WHERE table_id = %s",
                 (table_id,)
@@ -675,7 +638,6 @@ class OrderManager:
     
     def add_order_item(self, order_id, item_id, quantity, notes=""):
         """Add an item to an order"""
-        # Validate inputs
         if not order_id or not item_id or not quantity:
             return False, "Order ID, item ID, and quantity are required"
         
@@ -686,7 +648,6 @@ class OrderManager:
         except ValueError:
             return False, "Quantity must be a number"
         
-        # Check if the order exists and is not paid
         check_query = "SELECT status FROM orders WHERE order_id = %s"
         order = self.db.execute_query(check_query, (order_id,), 'one')
         if not order:
@@ -695,13 +656,11 @@ class OrderManager:
         if order['status'] == 'paid':
             return False, "Cannot add items to a paid order"
         
-        # Get item price
         item_query = "SELECT price, name FROM menu_items WHERE item_id = %s"
         item = self.db.execute_query(item_query, (item_id,), 'one')
         if not item:
             return False, "Menu item not found"
         
-        # Add item to order
         insert_query = """
             INSERT INTO order_items (order_id, item_id, quantity, unit_price, notes)
             VALUES (%s, %s, %s, %s, %s)
@@ -719,7 +678,6 @@ class OrderManager:
     
     def remove_order_item(self, order_item_id):
         """Remove an item from an order"""
-        # Check if the order item exists
         check_query = """
             SELECT oi.order_item_id, o.status, oi.quantity, mi.name 
             FROM order_items oi
@@ -734,7 +692,6 @@ class OrderManager:
         if item['status'] == 'paid':
             return False, "Cannot modify a paid order"
         
-        # Remove the item
         delete_query = "DELETE FROM order_items WHERE order_item_id = %s"
         self.db.execute_query(delete_query, (order_item_id,))
         
@@ -747,11 +704,9 @@ class OrderManager:
         if status not in valid_statuses:
             return False, f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
         
-        # Update status
         update_query = "UPDATE orders SET status = %s WHERE order_id = %s"
         self.db.execute_query(update_query, (status, order_id))
         
-        # If status is 'paid', mark table as unoccupied
         if status == 'paid':
             self.db.execute_query("""
                 UPDATE tables SET is_occupied = FALSE 
@@ -763,7 +718,6 @@ class OrderManager:
     
     def get_order_details(self, order_id):
         """Get detailed information about an order"""
-        # Get order header
         order_query = """
             SELECT o.order_id, o.order_date, o.status,
                    c.customer_id, c.name as customer_name, c.mobile as customer_mobile,
@@ -778,7 +732,6 @@ class OrderManager:
         if not order:
             return None
         
-        # Get order items
         items_query = """
             SELECT oi.order_item_id, mi.name, oi.quantity, oi.unit_price, 
                    (oi.quantity * oi.unit_price) as total_price, oi.notes
@@ -788,14 +741,11 @@ class OrderManager:
         """
         items = self.db.execute_query(items_query, (order_id,), 'all')
         
-        # Calculate totals
         subtotal = sum(item['total_price'] for item in items) if items else 0
         
-        # Get bill if exists
         bill_query = "SELECT * FROM bills WHERE order_id = %s"
         bill = self.db.execute_query(bill_query, (order_id,), 'one')
         
-        # Combine data
         order_details = {
             'order': order,
             'items': items,
@@ -824,7 +774,6 @@ class OrderManager:
     
     def create_bill(self, order_id, discount_amount=0, payment_method='cash'):
         """Create a bill for an order"""
-        # Validate the order
         order_details = self.get_order_details(order_id)
         if not order_details:
             return False, "Order not found"
@@ -836,7 +785,6 @@ class OrderManager:
             return False, "Bill already exists for this order"
 
         try:
-            # Convert amounts to Decimal for accuracy
             subtotal = Decimal(str(order_details['subtotal']))
             discount_amount = Decimal(str(discount_amount or 0))
 
@@ -845,14 +793,11 @@ class OrderManager:
             if discount_amount > subtotal:
                 return False, "Discount cannot exceed subtotal"
 
-            # Tax calculation
             tax_rate = Decimal('0.18')
             tax_amount = (subtotal * tax_rate).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
-            # Final total
             total_amount = (subtotal + tax_amount - discount_amount).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
-            # Insert bill into database
             insert_query = """
                 INSERT INTO bills (
                     order_id, subtotal, tax_amount, discount_amount, 
@@ -875,7 +820,6 @@ class OrderManager:
     
     def complete_payment(self, order_id):
         """Mark a bill as paid and complete the order"""
-        # Update bill status
         bill_update = """
             UPDATE bills 
             SET payment_status = 'completed', payment_time = NOW()
@@ -883,18 +827,15 @@ class OrderManager:
         """
         self.db.execute_query(bill_update, (order_id,))
         
-        # Update order status
         order_update = "UPDATE orders SET status = 'paid' WHERE order_id = %s"
         self.db.execute_query(order_update, (order_id,))
         
-        # Free up the table
         table_update = """
             UPDATE tables SET is_occupied = FALSE 
             WHERE table_id = (SELECT table_id FROM orders WHERE order_id = %s)
         """
         self.db.execute_query(table_update, (order_id,))
         
-        # Add loyalty points (1 point per 100 in total)
         bill_query = """
             SELECT b.total_amount, o.customer_id 
             FROM bills b
@@ -914,7 +855,6 @@ class OrderManager:
                 self.db.execute_query(loyalty_query, (points_earned, bill['customer_id']))
                 logging.info(f"Added {points_earned} loyalty points to customer {bill['customer_id']}")
             
-            # Update daily summary
             self._update_daily_summary(bill['total_amount'])
         
         logging.info(f"Completed payment for order {order_id}")
@@ -924,12 +864,10 @@ class OrderManager:
         """Update daily summary with order amount"""
         today = date.today()
         
-        # Get current summary for today
         query = "SELECT * FROM daily_summary WHERE summary_date = %s"
         summary = self.db.execute_query(query, (today,), 'one')
         
         if summary:
-            # Update existing summary
             total_orders = summary['total_orders'] + 1
             total_revenue = summary['total_revenue'] + amount
             average_bill = total_revenue / total_orders
@@ -941,7 +879,6 @@ class OrderManager:
             """
             self.db.execute_query(update_query, (total_orders, total_revenue, average_bill, today))
         else:
-            # Create new summary
             insert_query = """
                 INSERT INTO daily_summary (summary_date, total_orders, total_revenue, average_bill)
                 VALUES (%s, 1, %s, %s)
@@ -978,7 +915,6 @@ class TableManager:
     
     def add_table(self, table_number, capacity):
         """Add a new table"""
-        # Validate inputs
         try:
             table_number = int(table_number)
             capacity = int(capacity)
@@ -987,14 +923,12 @@ class TableManager:
         except ValueError:
             return False, "Table number and capacity must be numbers"
         
-        # Check if table number already exists
         check_query = "SELECT COUNT(*) as count FROM tables WHERE table_number = %s"
         result = self.db.execute_query(check_query, (table_number,), 'one')
         
         if result and result['count'] > 0:
             return False, f"Table {table_number} already exists"
         
-        # Insert table
         insert_query = "INSERT INTO tables (table_number, capacity) VALUES (%s, %s)"
         table_id = self.db.execute_query(insert_query, (table_number, capacity))
         
@@ -1011,26 +945,22 @@ class ReservationManager:
     
     def create_reservation(self, customer_id, reservation_time, party_size, notes=""):
         """Create a new table reservation"""
-        # Validate inputs
         try:
             party_size = int(party_size)
             if party_size <= 0:
                 return False, "Party size must be positive"
             
-            # Parse and validate reservation time
             if isinstance(reservation_time, str):
                 try:
                     reservation_time = datetime.strptime(reservation_time, "%Y-%m-%d %H:%M")
                 except ValueError:
                     return False, "Invalid date format. Use YYYY-MM-DD HH:MM"
             
-            # Check if reservation is in the future
             if reservation_time < datetime.now():
                 return False, "Reservation time must be in the future"
         except ValueError:
             return False, "Party size must be a number"
         
-        # Find an appropriate table
         table_query = """
             SELECT table_id, table_number, capacity 
             FROM tables 
@@ -1043,8 +973,6 @@ class ReservationManager:
         if not table:
             return False, f"No suitable table available for party of {party_size}"
         
-        # Check if table is available at the requested time
-        # This is a simplified check - in a real system, you'd need more sophisticated logic
         overlap_query = """
             SELECT COUNT(*) as count FROM reservations
             WHERE table_id = %s 
@@ -1061,7 +989,6 @@ class ReservationManager:
         if overlap and overlap['count'] > 0:
             return False, "Table not available at the requested time"
         
-        # Create reservation
         insert_query = """
             INSERT INTO reservations 
             (customer_id, table_id, reservation_time, party_size, notes, status)
@@ -1112,7 +1039,6 @@ class ReservationManager:
         if status not in valid_statuses:
             return False, f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
         
-        # Update status
         update_query = "UPDATE reservations SET status = %s WHERE reservation_id = %s"
         self.db.execute_query(update_query, (status, reservation_id))
         
@@ -1258,7 +1184,6 @@ class InventoryManager:
     
     def add_inventory_item(self, name, quantity, unit, reorder_level=0):
         """Add a new inventory item"""
-        # Validate inputs
         if not name or not unit:
             return False, "Name and unit are required"
         
@@ -1270,14 +1195,12 @@ class InventoryManager:
         except ValueError:
             return False, "Quantity and reorder level must be numbers"
         
-        # Check if item already exists
         check_query = "SELECT inventory_id FROM inventory_items WHERE name = %s"
         existing = self.db.execute_query(check_query, (name,), 'one')
         
         if existing:
             return False, f"Item '{name}' already exists"
         
-        # Insert inventory item
         insert_query = """
             INSERT INTO inventory_items (name, quantity, unit, reorder_level)
             VALUES (%s, %s, %s, %s)
@@ -1292,7 +1215,6 @@ class InventoryManager:
     
     def update_inventory(self, inventory_id, quantity_change):
         """Update inventory quantity (positive for adding, negative for using)"""
-        # Get current item data
         query = "SELECT name, quantity, unit FROM inventory_items WHERE inventory_id = %s"
         item = self.db.execute_query(query, (inventory_id,), 'one')
         if not item:
@@ -1307,7 +1229,6 @@ class InventoryManager:
         if new_quantity < 0:
             return False, "Not enough inventory available"
         
-        # Update quantity
         update_query = "UPDATE inventory_items SET quantity = %s WHERE inventory_id = %s"
         self.db.execute_query(update_query, (new_quantity, inventory_id))
         
@@ -1412,7 +1333,6 @@ def main():
                             except ValueError:
                                 print("Invalid input.")
 
-                    # Confirm bill creation
                     discount = input("Discount Amount (default 0): ") or 0
                     payment_method = input("Payment Method (cash/credit_card/upi/other): ") or 'cash'
                     success, result = manager.orders.create_bill(order_id, discount, payment_method)
