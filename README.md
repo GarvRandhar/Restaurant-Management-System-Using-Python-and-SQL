@@ -12,7 +12,7 @@ A full-featured restaurant management application built with Python and MySQL. I
 - Table assignment and real-time occupancy
 - Order creation and item management
 - Billing system with GST (18%) and discounts
-- Payment tracking and loyalty points system
+- Payment tracking
 - Inventory monitoring with low-stock alerts
 - Daily sales summary and reports
 - Clean terminal UI with `tabulate`
